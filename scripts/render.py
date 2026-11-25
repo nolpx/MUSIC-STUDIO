@@ -1,10 +1,11 @@
 import os
 import sys
 import json
+import math
 import subprocess
 import gdown
 
-# Baca parameter aman lewat Environment Variables (anti error tanda kutip/simbol nama lagu)
+# Baca parameter aman lewat Environment Variables
 BG_ID = os.environ.get("BG_ID", "").strip()
 BG_NAME = os.environ.get("BG_NAME", "background").strip()
 PLAYLIST = json.loads(os.environ.get("PLAYLIST_JSON", "[]"))
@@ -26,6 +27,18 @@ def download_gdrive(file_id, out_path, label):
             f"ERROR: Gagal mengunduh '{label}' dari Google Drive. "
             "Pastikan folder/file di-share 'Anyone with the link (Viewer)'."
         )
+
+
+def get_duration(filepath, fallback=10.0):
+    try:
+        out = subprocess.check_output([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", filepath
+        ]).decode().strip()
+        val = float(out)
+        return val if val > 0 else fallback
+    except Exception:
+        return fallback
 
 
 def hex_to_ass_color(hex_str, default="&H00FFFFFF"):
@@ -62,7 +75,7 @@ mime_bg = subprocess.check_output(["file", "--mime-type", "-b", bg_raw]).decode(
 is_bg_image = mime_bg.startswith("image/")
 print(f"Tipe Background: {mime_bg} ({'Gambar' if is_bg_image else 'Video'})")
 
-# 2. Unduh & Normalisasi hanya lagu-lagu yang dipilih di Playlist (sesuai urutan!)
+# 2. Unduh & Normalisasi lagu-lagu terpilih di Playlist (sesuai urutan)
 tracks = []
 for idx, item in enumerate(PLAYLIST):
     file_id = item["id"]
@@ -77,16 +90,12 @@ for idx, item in enumerate(PLAYLIST):
         "-vn", "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "192k", norm_audio
     ], check=True)
 
-    dur = float(subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", norm_audio
-    ]).decode().strip())
-
+    dur = get_duration(norm_audio, fallback=180.0)
     tracks.append((norm_audio, song_title, dur))
-    os.remove(raw_audio)  # hemat ruang SSD runner
+    os.remove(raw_audio)
 
 total_sec = sum(t[2] for t in tracks)
-print(f"🎵 Total {len(tracks)} lagu terpilih | Total durasi otomatis: {total_sec / 60:.2f} menit")
+print(f"🎵 Total {len(tracks)} lagu terpilih | Total durasi: {total_sec / 60:.2f} menit ({total_sec:.2f} dtk)")
 
 # 3. Gabungkan semua audio instan (-c copy)
 with open("work/concat_list.txt", "w", encoding="utf-8") as f:
@@ -98,7 +107,7 @@ subprocess.run([
     "-i", "work/concat_list.txt", "-c", "copy", "work/full_audio.m4a"
 ], check=True)
 
-# 4. Buat Chapters YouTube & Subtitle (.ass) presisi sesuai posisi slider di Preview
+# 4. Buat Chapters YouTube & Subtitle (.ass) presisi sesuai slider Preview
 title_on = bool(SETTINGS.get("titleEnabled", True))
 title_text = (SETTINGS.get("titleText") or "").strip()
 title_y_pct = float(SETTINGS.get("titleY", 8))
@@ -158,12 +167,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     with open("work/overlays.ass", "w", encoding="utf-8") as f:
         f.write(ass_content)
 
-# 5. MODE RENDER TURBO: Pre-scale background 1 kali saja di awal (tanpa konversi rgb24!)
+# 5. Pre-scale background 1x di awal + Loop TERBATAS (ANTI MACET di frame terakhir!)
 vis_style = SETTINGS.get("visStyle", "bar")
 vis_color = SETTINGS.get("visColor", "#00ffcc")
 vis_y_pct = float(SETTINGS.get("visY", 78))
 vis_h = int(max(40, min(400, int(SETTINGS.get("visHeight", 150)))))
-vis_h = vis_h - (vis_h % 2)  # wajib genap untuk FFmpeg
+vis_h = vis_h - (vis_h % 2)
 vis_top = int(round((vis_y_pct / 100.0) * (1080 - vis_h)))
 
 has_motion = (not is_bg_image) or (vis_style != "off")
@@ -176,19 +185,22 @@ if is_bg_image:
         "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1",
         "-q:v", "2", "work/bg_ready.jpg"
     ], check=True)
-    cmd += ["-framerate", str(fps), "-loop", "1", "-i", "work/bg_ready.jpg"]
+    cmd += ["-framerate", str(fps), "-loop", "1", "-t", f"{total_sec + 1:.3f}", "-i", "work/bg_ready.jpg"]
 else:
     subprocess.run([
         "ffmpeg", "-y", "-v", "error", "-i", bg_raw, "-an",
         "-vf", f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps={fps},setsar=1,format=yuv420p",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "work/bg_ready.mp4"
     ], check=True)
-    cmd += ["-stream_loop", "-1", "-i", "work/bg_ready.mp4"]
+    bg_dur = get_duration("work/bg_ready.mp4", fallback=10.0)
+    loop_count = max(0, math.ceil(total_sec / bg_dur))
+    print(f"🔁 Video AI durasi {bg_dur:.2f} dtk → di-loop terbatas {loop_count}x (anti macet)")
+    cmd += ["-stream_loop", str(loop_count), "-i", "work/bg_ready.mp4"]
 
 cmd += ["-i", "work/full_audio.m4a"]
 
-# Rangkai Filter Native yuv420p (Super Cepat!)
-filters = ["[0:v]format=yuv420p[v0]"]
+# Rangkai Filter (Visualizer 100% full resolusi & tajam + trim presisi ke total_sec)
+filters = [f"[0:v]trim=duration={total_sec:.3f},setpts=PTS-STARTPTS,format=yuv420p[v0]"]
 cur = "v0"
 
 if vis_style == "bar":
@@ -196,14 +208,14 @@ if vis_style == "bar":
         f"[1:a]showfreqs=s=1400x{vis_h}:mode=bar:ascale=sqrt:fscale=log:colors={vis_color},"
         f"fps={fps},format=rgba,colorkey=0x000000:0.12:0.12[vis]"
     )
-    filters.append(f"[{cur}][vis]overlay=(W-w)/2:{vis_top}:shortest=1:format=auto[v1]")
+    filters.append(f"[{cur}][vis]overlay=(W-w)/2:{vis_top}:eof_action=pass:format=auto[v1]")
     cur = "v1"
 elif vis_style == "wave":
     filters.append(
         f"[1:a]showwaves=s=1400x{vis_h}:mode=cline:rate={fps}:colors={vis_color},"
         f"format=rgba,colorkey=0x000000:0.12:0.12[vis]"
     )
-    filters.append(f"[{cur}][vis]overlay=(W-w)/2:{vis_top}:shortest=1:format=auto[v1]")
+    filters.append(f"[{cur}][vis]overlay=(W-w)/2:{vis_top}:eof_action=pass:format=auto[v1]")
     cur = "v1"
 
 if has_ass:
@@ -215,14 +227,17 @@ filters.append(f"[{cur}]format=yuv420p[vout]")
 cmd += [
     "-filter_complex", ";".join(filters),
     "-map", "[vout]", "-map", "1:a",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "21",
+    "-t", f"{total_sec:.3f}",
+    "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+    "-maxrate", "6000k", "-bufsize", "12000k", "-g", str(fps * 2),
+    "-movflags", "+faststart",
 ]
 if not has_motion:
     cmd += ["-tune", "stillimage"]
 
-cmd += ["-c:a", "copy", "-shortest", "output.mp4"]
+cmd += ["-c:a", "copy", "output.mp4"]
 
-print("🚀 Memulai Render Mode Turbo...")
+print("🚀 Memulai Render Mode Turbo (Anti Macet & Ukuran Ramping)...")
 subprocess.run(cmd, check=True)
 
 size_mb = os.path.getsize("output.mp4") / (1024 * 1024)
