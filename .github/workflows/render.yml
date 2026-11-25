@@ -14,7 +14,7 @@ on:
         default: ''
       efek:
         description: 'hujan / salju / tanpa_efek'
-        default: 'hujan'
+        default: 'tanpa_efek'
       vis_style:
         description: 'bar / wave / off'
         default: 'bar'
@@ -26,15 +26,16 @@ jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Ambil Kode Repositori
+        uses: actions/checkout@v4
 
       - name: Install FFmpeg & Font
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu file
 
       - name: Download Bahan dari Link
         run: |
-          curl -L "${{ github.event.inputs.bg_url }}" -o bg_input
-          curl -L "${{ github.event.inputs.audio_url }}" -o audio.mp3
+          curl -fL "${{ github.event.inputs.bg_url }}" -o bg_input
+          curl -fL "${{ github.event.inputs.audio_url }}" -o audio.mp3
 
       - name: Render Video
         run: |
@@ -44,9 +45,7 @@ jobs:
             --vis_color "${{ github.event.inputs.vis_color }}" \
             --judul_teks "${{ github.event.inputs.judul_teks }}"
 
-      # Untuk tes video pendek (<500MB), bisa langsung didownload di sini.
-      # Nanti untuk video 1 jam (>1GB), langkah ini kita ganti dengan Auto-Upload ke YouTube!
-      - name: Simpan Hasil Render (Tahap Uji Coba)
+      - name: Simpan Hasil Render
         uses: actions/upload-artifact@v4
         with:
           name: hasil-video-musik
