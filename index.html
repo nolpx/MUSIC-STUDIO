@@ -7,20 +7,23 @@
   <style>
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body { margin: 0; background: #0f1117; color: #e6edf3; display: flex; min-height: 100vh; }
-    .sidebar { width: 360px; background: #161b22; padding: 20px; border-right: 1px solid #30363d; overflow-y: auto; }
+    .sidebar { width: 370px; background: #161b22; padding: 20px; border-right: 1px solid #30363d; overflow-y: auto; }
     .main { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
     h2 { margin: 0 0 14px; font-size: 18px; color: #58a6ff; }
     h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; color: #8b949e; letter-spacing: .5px; }
     label { display: block; font-size: 13px; margin: 10px 0 4px; color: #c9d1d9; }
     input, select { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #fff; font-size: 13px; }
+    input[type="file"] { padding: 6px; background: #1c2128; cursor: pointer; }
     input[type="color"] { height: 38px; padding: 2px; cursor: pointer; }
+    .hint { font-size: 11px; color: #8b949e; margin-top: 3px; }
     .btn { width: 100%; margin-top: 14px; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
     .btn-primary { background: #238636; color: #fff; }
     .btn-primary:hover { background: #2ea043; }
+    .btn-primary:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
     .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; margin-top: 8px; }
     .preview-box { width: 100%; max-width: 854px; aspect-ratio: 16 / 9; background: #000; border: 2px solid #30363d; border-radius: 10px; overflow: hidden; }
     canvas { width: 100%; height: 100%; display: block; }
-    .status-box { width: 100%; max-width: 854px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; font-size: 13px; }
+    .status-box { width: 100%; max-width: 854px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; font-size: 13px; line-height: 1.5; }
     .run-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
     .run-item a { color: #58a6ff; text-decoration: none; }
     @media (max-width: 820px) { body { flex-direction: column; } .sidebar { width: 100%; border-right: none; border-bottom: 1px solid #30363d; } }
@@ -31,14 +34,19 @@
   <div class="sidebar">
     <h2>🎬 MUSIC-STUDIO</h2>
 
-    <h3>1. Bahan Video & Audio (Direct Link)</h3>
-    <label>Link Background (Gambar JPG/PNG atau Video AI MP4)</label>
-    <input id="bg_url" placeholder="https://.../background.jpg" oninput="loadBgPreview()" />
+    <h3>1. Background (Gambar / Video AI)</h3>
+    <label>📁 Upload Langsung dari HP / Laptop (&lt;25 MB)</label>
+    <input type="file" id="bg_file" accept="image/*,video/*" onchange="handleLocalBg()" />
+    <div class="hint">Atau pakai Link URL (opsional jika tidak upload file):</div>
+    <input id="bg_url" placeholder="https://.../background.jpg" oninput="loadBgUrlPreview()" style="margin-top:4px;" />
 
-    <label>Link Audio Lagu (MP3 / WAV)</label>
-    <input id="audio_url" placeholder="https://.../lagu.mp3" />
+    <h3>2. Audio Lagu (MP3 / WAV)</h3>
+    <label>🎵 Upload Langsung dari HP / Laptop (&lt;25 MB)</label>
+    <input type="file" id="audio_file" accept="audio/*" />
+    <div class="hint">Atau pakai Link URL (untuk file besar &gt;25 MB):</div>
+    <input id="audio_url" placeholder="https://.../lagu.mp3" style="margin-top:4px;" />
 
-    <h3>2. Tampilan & Efek</h3>
+    <h3>3. Tampilan & Efek</h3>
     <label>Teks Judul / Lirik di Layar</label>
     <input id="judul_teks" value="Relaxing Night Music - 1 Hour" />
 
@@ -59,17 +67,17 @@
     <label>Warna Visualizer</label>
     <input type="color" id="vis_color" value="#00ffcc" />
 
-    <h3>3. Koneksi Server GitHub</h3>
+    <h3>4. Koneksi Server GitHub</h3>
     <label>Username GitHub</label>
     <input id="gh_owner" onchange="saveConfig()" />
 
     <label>Nama Repositori</label>
     <input id="gh_repo" onchange="saveConfig()" />
 
-    <label>GitHub Token (Fine-Grained PAT: Actions Read/Write)</label>
+    <label>GitHub Token (Izin: Actions + Contents Read/Write)</label>
     <input id="gh_token" type="password" placeholder="github_pat_..." onchange="saveConfig()" />
 
-    <button class="btn btn-primary" onclick="triggerRender()">🚀 Render di Server GitHub</button>
+    <button id="renderBtn" class="btn btn-primary" onclick="triggerRender()">🚀 Upload & Render di GitHub</button>
     <button class="btn btn-secondary" onclick="checkStatus()">🔄 Cek Status Render</button>
   </div>
 
@@ -81,13 +89,12 @@
     <div class="status-box">
       <strong>📡 Status Server Render GitHub Actions:</strong>
       <div id="statusLog" style="margin-top: 10px; color: #8b949e;">
-        Isi link bahan dan GitHub Token di panel kiri, lalu klik "Render di Server GitHub".
+        Pilih gambar/video & lagu di panel kiri, lalu klik "Upload & Render di GitHub".
       </div>
     </div>
   </div>
 
 <script>
-  // Muat pengaturan tersimpan (default otomatis ke repo Anda)
   document.getElementById('gh_owner').value = localStorage.getItem('gh_owner') || 'nolpx';
   document.getElementById('gh_repo').value = localStorage.getItem('gh_repo') || 'MUSIC-STUDIO';
   document.getElementById('gh_token').value = localStorage.getItem('gh_token') || '';
@@ -98,15 +105,39 @@
     });
   }
 
-  // Live Preview Canvas
+  // --- LIVE PREVIEW GAMBAR & VIDEO LOKAL ---
   const canvas = document.getElementById('previewCanvas');
   const ctx = canvas.getContext('2d');
   let bgImg = null;
+  let bgVideo = null;
+
   const particles = Array.from({ length: 90 }, () => ({
     x: Math.random() * 960, y: Math.random() * 540, s: Math.random() * 4 + 2
   }));
 
-  function loadBgPreview() {
+  function handleLocalBg() {
+    const file = document.getElementById('bg_file').files[0];
+    if (!file) return;
+    const objUrl = URL.createObjectURL(file);
+
+    if (file.type.startsWith('video/')) {
+      bgImg = null;
+      if (bgVideo) bgVideo.pause();
+      bgVideo = document.createElement('video');
+      bgVideo.src = objUrl;
+      bgVideo.muted = true;
+      bgVideo.loop = true;
+      bgVideo.play();
+    } else {
+      if (bgVideo) { bgVideo.pause(); bgVideo = null; }
+      const img = new Image();
+      img.onload = () => { bgImg = img; };
+      img.src = objUrl;
+    }
+  }
+
+  function loadBgUrlPreview() {
+    if (document.getElementById('bg_file').files[0]) return;
     const url = document.getElementById('bg_url').value.trim();
     if (!url) { bgImg = null; return; }
     const img = new Image();
@@ -119,7 +150,9 @@
   let tick = 0;
   function animatePreview() {
     tick += 0.08;
-    if (bgImg) {
+    if (bgVideo && bgVideo.readyState >= 2) {
+      ctx.drawImage(bgVideo, 0, 0, 960, 540);
+    } else if (bgImg) {
       ctx.drawImage(bgImg, 0, 0, 960, 540);
     } else {
       const grad = ctx.createLinearGradient(0, 0, 0, 540);
@@ -168,52 +201,116 @@
   }
   animatePreview();
 
-  // Kirim perintah render ke GitHub Actions
+  // --- FUNGSI UPLOAD FILE LANGSUNG KE REPO GITHUB ---
+  async function uploadToGitHub(owner, repo, token, path, file) {
+    if (file.size > 25 * 1024 * 1024) {
+      throw new Error(`File "${file.name}" lebih dari 25 MB. Gunakan kolom Link URL untuk file besar.`);
+    }
+
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    // Cek apakah file lama sudah ada agar bisa ditimpa (overwrite)
+    let sha = null;
+    const check = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (check.ok) {
+      const existing = await check.json();
+      sha = existing.sha;
+    }
+
+    const body = { message: `Upload ${path} via MUSIC-STUDIO`, content: base64 };
+    if (sha) body.sha = sha;
+
+    const put = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!put.ok) {
+      const err = await put.text();
+      throw new Error(`Gagal upload ${path} (${put.status}). Pastikan Token punya izin Contents: Read & Write.\nDetail: ${err}`);
+    }
+    return path;
+  }
+
+  // --- UPLOAD FILE (JIKA ADA) LALU JALANKAN RENDER ---
   async function triggerRender() {
     saveConfig();
     const owner = document.getElementById('gh_owner').value.trim();
     const repo = document.getElementById('gh_repo').value.trim();
     const token = document.getElementById('gh_token').value.trim();
-    const bg_url = document.getElementById('bg_url').value.trim();
-    const audio_url = document.getElementById('audio_url').value.trim();
+    const bgFile = document.getElementById('bg_file').files[0];
+    const audioFile = document.getElementById('audio_file').files[0];
+    let bgTarget = document.getElementById('bg_url').value.trim();
+    let audioTarget = document.getElementById('audio_url').value.trim();
 
     if (!token) return alert('Isi GitHub Token dulu di panel kiri bawah!');
-    if (!bg_url || !audio_url) return alert('Isi Link Background dan Link Audio MP3 dulu!');
+    if (!bgFile && !bgTarget) return alert('Pilih file Background atau isi Link Background dulu!');
+    if (!audioFile && !audioTarget) return alert('Pilih file Audio MP3 atau isi Link Audio dulu!');
 
+    const btn = document.getElementById('renderBtn');
     const log = document.getElementById('statusLog');
-    log.innerHTML = '⏳ Mengirim perintah render ke server GitHub...';
+    btn.disabled = true;
 
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/render.yml/dispatches`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        ref: 'main',
-        inputs: {
-          bg_url: bg_url,
-          audio_url: audio_url,
-          judul_teks: document.getElementById('judul_teks').value.trim(),
-          efek: document.getElementById('efek').value,
-          vis_style: document.getElementById('vis_style').value,
-          vis_color: document.getElementById('vis_color').value
-        }
-      })
-    });
+    try {
+      if (bgFile) {
+        log.innerHTML = `⏳ Meng-upload background (${bgFile.name}) ke GitHub...`;
+        bgTarget = await uploadToGitHub(owner, repo, token, 'uploads/bg_media', bgFile);
+      }
+      if (audioFile) {
+        log.innerHTML = `⏳ Meng-upload audio (${audioFile.name}) ke GitHub...`;
+        audioTarget = await uploadToGitHub(owner, repo, token, 'uploads/audio_media', audioFile);
+      }
 
-    if (res.status === 204) {
-      log.innerHTML = '✅ Perintah diterima! Server GitHub sedang memulai proses render...';
-      setTimeout(checkStatus, 4000);
-    } else {
-      const err = await res.text();
-      log.innerHTML = `❌ Gagal (${res.status}): ${err}`;
+      log.innerHTML = '🚀 Bahan siap! Mengirim perintah render ke server GitHub...';
+      await new Promise(r => setTimeout(r, 1500)); // jeda singkat agar commit terbaca
+
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/render.yml/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: {
+            bg_url: bgTarget,
+            audio_url: audioTarget,
+            judul_teks: document.getElementById('judul_teks').value.trim(),
+            efek: document.getElementById('efek').value,
+            vis_style: document.getElementById('vis_style').value,
+            vis_color: document.getElementById('vis_color').value
+          }
+        })
+      });
+
+      if (res.status === 204) {
+        log.innerHTML = '✅ Berhasil! Server GitHub sedang merender video Anda...';
+        setTimeout(checkStatus, 4000);
+      } else {
+        const err = await res.text();
+        log.innerHTML = `❌ Gagal memulai render (${res.status}): ${err}`;
+      }
+    } catch (e) {
+      log.innerHTML = `❌ Error: ${e.message}`;
+    } finally {
+      btn.disabled = false;
     }
   }
 
-  // Cek status render
   async function checkStatus() {
     const owner = document.getElementById('gh_owner').value.trim();
     const repo = document.getElementById('gh_repo').value.trim();
