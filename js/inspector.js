@@ -1,4 +1,4 @@
-// KOLOM KANAN (ATAS): Inspector Khusus Pengaturan Tulisan, Now Playing, & Visualizer
+// KOLOM KANAN (ATAS): Inspector Model Lipat/Accordion (1 Terbuka, Lainnya Otomatis Tertutup)
 (function () {
   const mount = document.getElementById('inspector-mount');
   if (!mount) return;
@@ -6,78 +6,94 @@
   const s = STUDIO.settings;
 
   mount.innerHTML = `
-    <!-- 1. JUDUL VIDEO UTAMA -->
-    <div class="card">
-      <div class="card-title"><span>✏️ Judul Video Utama</span></div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
 
-      <label class="check-row">
-        <input type="checkbox" id="set-title-on" ${s.titleEnabled ? 'checked' : ''} />
-        Tampilkan Judul Utama
-      </label>
+      <!-- 1. JUDUL VIDEO UTAMA -->
+      <details class="collapsible">
+        <summary>✏️ Judul Video Utama</summary>
 
-      <label>Teks Judul</label>
-      <input type="text" id="set-title-text" value="${s.titleText.replace(/"/g, '&quot;')}" />
+        <label class="check-row">
+          <input type="checkbox" id="set-title-on" ${s.titleEnabled ? 'checked' : ''} />
+          Tampilkan Judul Utama
+        </label>
 
-      <div class="label-row">Posisi Vertikal (Atas ↔ Bawah) <span id="val-title-y">${s.titleY}%</span></div>
-      <input type="range" id="set-title-y" min="0" max="90" value="${s.titleY}" />
+        <label>Teks Judul</label>
+        <input type="text" id="set-title-text" value="${s.titleText.replace(/"/g, '&quot;')}" />
 
-      <div class="label-row">Ukuran Font <span id="val-title-size">${s.titleSize} px</span></div>
-      <input type="range" id="set-title-size" min="24" max="96" value="${s.titleSize}" />
+        <div class="label-row">Posisi Vertikal (Atas ↔ Bawah) <span id="val-title-y">${s.titleY}%</span></div>
+        <input type="range" id="set-title-y" min="0" max="90" value="${s.titleY}" />
 
-      <label>Warna Teks Judul</label>
-      <input type="color" id="set-title-color" value="${s.titleColor}" />
-    </div>
+        <div class="label-row">Ukuran Font <span id="val-title-size">${s.titleSize} px</span></div>
+        <input type="range" id="set-title-size" min="24" max="96" value="${s.titleSize}" />
 
-    <!-- 2. JUDUL LAGU OTOMATIS (NOW PLAYING) -->
-    <div class="card" style="margin-top:14px;">
-      <div class="card-title"><span>🎵 Judul Lagu Auto (Nama File)</span></div>
+        <label>Warna Teks Judul</label>
+        <input type="color" id="set-title-color" value="${s.titleColor}" />
+      </details>
 
-      <label class="check-row">
-        <input type="checkbox" id="set-np-on" ${s.npEnabled ? 'checked' : ''} />
-        Tampilkan Nama Lagu Otomatis
-      </label>
+      <!-- 2. JUDUL LAGU OTOMATIS (NOW PLAYING) -->
+      <details class="collapsible">
+        <summary>🎵 Judul Lagu Auto (Nama File)</summary>
 
-      <label>Ikon / Awalan Teks</label>
-      <input type="text" id="set-np-prefix" value="${(s.npPrefix || '').replace(/"/g, '&quot;')}" placeholder="contoh: ♪  atau Now Playing: " />
+        <label class="check-row">
+          <input type="checkbox" id="set-np-on" ${s.npEnabled ? 'checked' : ''} />
+          Tampilkan Nama Lagu Otomatis
+        </label>
 
-      <label>Perataan Teks</label>
-      <select id="set-np-align">
-        <option value="left" ${s.npAlign === 'left' ? 'selected' : ''}>Rata Kiri</option>
-        <option value="center" ${s.npAlign === 'center' ? 'selected' : ''}>Rata Tengah</option>
-        <option value="right" ${s.npAlign === 'right' ? 'selected' : ''}>Rata Kanan</option>
-      </select>
+        <label>Ikon / Awalan Teks</label>
+        <input type="text" id="set-np-prefix" value="${(s.npPrefix || '').replace(/"/g, '&quot;')}" placeholder="contoh: ♪  atau Now Playing: " />
 
-      <div class="label-row">Posisi Vertikal (Atas ↔ Bawah) <span id="val-np-y">${s.npY}%</span></div>
-      <input type="range" id="set-np-y" min="6" max="98" value="${s.npY}" />
+        <label>Perataan Teks</label>
+        <select id="set-np-align">
+          <option value="left" ${s.npAlign === 'left' ? 'selected' : ''}>Rata Kiri</option>
+          <option value="center" ${s.npAlign === 'center' ? 'selected' : ''}>Rata Tengah</option>
+          <option value="right" ${s.npAlign === 'right' ? 'selected' : ''}>Rata Kanan</option>
+        </select>
 
-      <div class="label-row">Ukuran Font <span id="val-np-size">${s.npSize} px</span></div>
-      <input type="range" id="set-np-size" min="18" max="64" value="${s.npSize}" />
+        <div class="label-row">Posisi Vertikal (Atas ↔ Bawah) <span id="val-np-y">${s.npY}%</span></div>
+        <input type="range" id="set-np-y" min="6" max="98" value="${s.npY}" />
 
-      <label>Warna Teks Lagu</label>
-      <input type="color" id="set-np-color" value="${s.npColor}" />
-    </div>
+        <div class="label-row">Ukuran Font <span id="val-np-size">${s.npSize} px</span></div>
+        <input type="range" id="set-np-size" min="18" max="64" value="${s.npSize}" />
 
-    <!-- 3. VISUALIZER MUSIK -->
-    <div class="card" style="margin-top:14px;">
-      <div class="card-title"><span>📊 Visualizer Musik</span></div>
+        <label>Warna Teks Lagu</label>
+        <input type="color" id="set-np-color" value="${s.npColor}" />
+      </details>
 
-      <label>Gaya Visualizer</label>
-      <select id="set-vis-style">
-        <option value="bar" ${s.visStyle === 'bar' ? 'selected' : ''}>Spectrum Bar (Batang)</option>
-        <option value="wave" ${s.visStyle === 'wave' ? 'selected' : ''}>Gelombang Suara (Wave)</option>
-        <option value="off" ${s.visStyle === 'off' ? 'selected' : ''}>Matikan (Render Tercepat!)</option>
-      </select>
+      <!-- 3. VISUALIZER MUSIK -->
+      <details class="collapsible">
+        <summary>📊 Visualizer Musik</summary>
 
-      <label>Warna Visualizer</label>
-      <input type="color" id="set-vis-color" value="${s.visColor}" />
+        <label>Gaya Visualizer</label>
+        <select id="set-vis-style">
+          <option value="bar" ${s.visStyle === 'bar' ? 'selected' : ''}>Spectrum Bar (Batang)</option>
+          <option value="wave" ${s.visStyle === 'wave' ? 'selected' : ''}>Gelombang Suara (Wave)</option>
+          <option value="off" ${s.visStyle === 'off' ? 'selected' : ''}>Matikan (Render Tercepat!)</option>
+        </select>
 
-      <div class="label-row">Posisi Vertikal <span id="val-vis-y">${s.visY}%</span></div>
-      <input type="range" id="set-vis-y" min="0" max="100" value="${s.visY}" />
+        <label>Warna Visualizer</label>
+        <input type="color" id="set-vis-color" value="${s.visColor}" />
 
-      <div class="label-row">Tinggi Visualizer <span id="val-vis-h">${s.visHeight} px</span></div>
-      <input type="range" id="set-vis-h" min="60" max="300" step="10" value="${s.visHeight}" />
+        <div class="label-row">Posisi Vertikal <span id="val-vis-y">${s.visY}%</span></div>
+        <input type="range" id="set-vis-y" min="0" max="100" value="${s.visY}" />
+
+        <div class="label-row">Tinggi Visualizer <span id="val-vis-h">${s.visHeight} px</span></div>
+        <input type="range" id="set-vis-h" min="60" max="300" step="10" value="${s.visHeight}" />
+      </details>
+
     </div>
   `;
+
+  // Efek Accordion: Jika 1 lipatan di Kolom Kanan dibuka, lipatan lainnya otomatis tertutup
+  const colRight = document.getElementById('col-right');
+  if (colRight) {
+    colRight.addEventListener('toggle', (e) => {
+      if (e.target.tagName === 'DETAILS' && e.target.open) {
+        colRight.querySelectorAll('details').forEach(d => {
+          if (d !== e.target) d.open = false;
+        });
+      }
+    }, true);
+  }
 
   function bind(id, key, type, valId, suffix) {
     const el = document.getElementById(id);
