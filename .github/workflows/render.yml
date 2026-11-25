@@ -3,62 +3,45 @@ name: Render Studio Musik
 on:
   workflow_dispatch:
     inputs:
-      bg_url:
-        description: 'File atau Link Background'
+      bg_id:
+        description: 'Google Drive ID Background'
         required: true
-      audio_url:
-        description: 'File atau Link Audio'
+      bg_name:
+        description: 'Nama File Background'
+        default: 'background'
+      playlist_json:
+        description: 'Daftar Lagu Terpilih (JSON)'
         required: true
-      judul_teks:
-        description: 'Teks di layar'
-        default: ''
-      efek:
-        description: 'hujan / salju / tanpa_efek'
-        default: 'tanpa_efek'
-      vis_style:
-        description: 'bar / wave / off'
-        default: 'bar'
-      vis_color:
-        description: 'Warna Hex Visualizer'
-        default: '#00ffcc'
+      settings_json:
+        description: 'Pengaturan Teks & Visualizer (JSON)'
+        required: true
 
 jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode & File Upload
+      - name: Ambil Kode Proyek
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg & Font
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu file
-
-      - name: Siapkan Bahan (File Upload atau Link URL)
+      - name: Siapkan FFmpeg, Font & gdown (Cepat)
         run: |
-          BG="${{ github.event.inputs.bg_url }}"
-          AUDIO="${{ github.event.inputs.audio_url }}"
-
-          if [[ "$BG" == http* ]]; then
-            curl -fL "$BG" -o bg_input
-          else
-            cp "$BG" bg_input
+          if ! command -v ffmpeg >/dev/null 2>&1 || [ ! -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ]; then
+            sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu file
           fi
+          pip install -q gdown
 
-          if [[ "$AUDIO" == http* ]]; then
-            curl -fL "$AUDIO" -o audio.mp3
-          else
-            cp "$AUDIO" audio.mp3
-          fi
+      - name: Download Bahan Terpilih & Render (Mode Turbo)
+        env:
+          BG_ID: ${{ github.event.inputs.bg_id }}
+          BG_NAME: ${{ github.event.inputs.bg_name }}
+          PLAYLIST_JSON: ${{ github.event.inputs.playlist_json }}
+          SETTINGS_JSON: ${{ github.event.inputs.settings_json }}
+        run: python3 scripts/render.py
 
-      - name: Render Video
-        run: |
-          python3 scripts/render.py \
-            --efek "${{ github.event.inputs.efek }}" \
-            --vis_style "${{ github.event.inputs.vis_style }}" \
-            --vis_color "${{ github.event.inputs.vis_color }}" \
-            --judul_teks "${{ github.event.inputs.judul_teks }}"
-
-      - name: Simpan Hasil Render
+      - name: Simpan Hasil Video & Chapters (Mode Uji Coba <500MB)
         uses: actions/upload-artifact@v4
         with:
           name: hasil-video-musik
-          path: output.mp4
+          path: |
+            output.mp4
+            chapters.txt
