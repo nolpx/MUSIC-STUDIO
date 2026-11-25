@@ -1,11 +1,14 @@
-// KOLOM TENGAH (ATAS): Layar Preview 16:9, Player Audio Asli & Real-Time Visualizer
+// KOLOM TENGAH (ATAS): Layar Preview 16:9 (GPU Video Layer + Blob Cache + Real-Time Visualizer)
 (function () {
   const mount = document.getElementById('preview-mount');
   if (!mount) return;
 
   mount.innerHTML = `
-    <div class="preview-box">
-      <canvas id="previewCanvas" width="960" height="540"></canvas>
+    <div class="preview-box" style="position:relative;">
+      <video id="bgVideoLayer" muted loop playsinline preload="auto"
+        style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; pointer-events:none;"></video>
+      <canvas id="previewCanvas" width="960" height="540"
+        style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
     </div>
 
     <div class="player-bar">
@@ -20,6 +23,7 @@
     </div>
   `;
 
+  const bgVideoEl = document.getElementById('bgVideoLayer');
   const canvas = document.getElementById('previewCanvas');
   const ctx = canvas.getContext('2d');
   const btnPlay = document.getElementById('btn-play');
@@ -28,10 +32,12 @@
   const trackLabel = document.getElementById('player-track');
   const inpVol = document.getElementById('inp-vol');
 
-  // --- MEDIA BACKGROUND (GAMBAR / VIDEO AI DARI GDRIVE) ---
+  // --- MEDIA BACKGROUND (GPU VIDEO LAYER + BLOB CACHE ANTI PATAH-PATAH) ---
   let bgImg = null;
-  let bgVideo = null;
+  let isVideoActive = false;
   let bgStatusNote = '';
+  let currentBgAbort = null;
+  const videoBlobCache = {}; // simpan Blob URL video agar loop & ganti video instan
 
   function drawCover(source, sw, sh) {
     const cw = canvas.width;
@@ -42,35 +48,91 @@
     ctx.drawImage(source, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
   }
 
-  function loadSelectedBg(item) {
+  function playVideoLayer(srcUrl) {
+    bgImg = null;
+    isVideoActive = true;
+    bgVideoEl.style.display = 'block';
+    bgVideoEl.muted = true;
+    bgVideoEl.src = srcUrl;
+    bgVideoEl.play().catch(() => {});
+  }
+
+  function stopVideoLayer() {
+    isVideoActive = false;
+    bgVideoEl.pause();
+    bgVideoEl.removeAttribute('src');
+    bgVideoEl.load();
+    bgVideoEl.style.display = 'none';
+  }
+
+  async function loadSelectedBg(item) {
     if (!item) return;
+    if (currentBgAbort) {
+      currentBgAbort.abort();
+      currentBgAbort = null;
+    }
+
     const url = STUDIO.gdriveMediaUrl(item.id);
     const isVid = (item.mimeType || '').startsWith('video/') || /\.(mp4|mov|mkv|webm)$/i.test(item.name);
 
-    if (bgVideo) {
-      bgVideo.pause();
-      bgVideo.src = '';
-      bgVideo = null;
-    }
-
     if (isVid) {
-      bgImg = null;
-      bgStatusNote = '⏳ Memuat preview video AI...';
-      const v = document.createElement('video');
-      v.crossOrigin = 'anonymous';
-      v.muted = true;
-      v.loop = true;
-      v.playsInline = true;
-      v.src = url;
-      v.oncanplay = () => {
+      // Jika sudah pernah diunduh ke memori, langsung putar instan!
+      if (videoBlobCache[item.id]) {
         bgStatusNote = '';
-        v.play().catch(() => {});
-      };
-      v.onerror = () => {
-        bgStatusNote = '⚠️ Preview video terlalu besar/terblokir, tapi tetap aman saat dirender.';
-      };
-      bgVideo = v;
+        playVideoLayer(videoBlobCache[item.id]);
+        return;
+      }
+
+      const fileBytes = Number(item.size || 0);
+      const MAX_BLOB_BYTES = 80 * 1024 * 1024; // 80 MB
+
+      // Jika file video sangat besar (>80MB), pakai stream langsung di layer GPU
+      if (fileBytes > MAX_BLOB_BYTES) {
+        bgStatusNote = '';
+        playVideoLayer(url);
+        return;
+      }
+
+      // Unduh 1x ke memori lokal (Blob) agar looping 100% mulus tanpa buffering
+      currentBgAbort = new AbortController();
+      bgStatusNote = '⏳ Memuat video ke memori lokal (0%)...';
+
+      try {
+        const res = await fetch(url, { signal: currentBgAbort.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const total = Number(res.headers.get('content-length')) || fileBytes;
+        const reader = res.body && res.body.getReader ? res.body.getReader() : null;
+
+        let blob;
+        if (reader && total > 0) {
+          const chunks = [];
+          let loaded = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            loaded += value.length;
+            const pct = Math.min(100, Math.round((loaded / total) * 100));
+            bgStatusNote = `⏳ Memuat video ke memori lokal (${pct}%)...`;
+          }
+          blob = new Blob(chunks, { type: item.mimeType || 'video/mp4' });
+        } else {
+          blob = await res.blob();
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        videoBlobCache[item.id] = blobUrl;
+        bgStatusNote = '';
+        playVideoLayer(blobUrl);
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        // Fallback jika fetch blob gagal: putar stream langsung di layer GPU
+        bgStatusNote = '';
+        playVideoLayer(url);
+      }
     } else {
+      stopVideoLayer();
       bgStatusNote = '⏳ Memuat gambar...';
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -79,7 +141,6 @@
         bgStatusNote = '';
       };
       img.onerror = () => {
-        // Fallback ke thumbnail jika media utama gagal dimuat
         if (item.thumbnailLink) {
           const thumb = new Image();
           thumb.onload = () => { bgImg = thumb; bgStatusNote = ''; };
@@ -209,7 +270,7 @@
     }
   });
 
-  // --- LOOP ANIMASI PREVIEW 16:9 (SKALA 0.5x DARI 1920x1080) ---
+  // --- LOOP ANIMASI OVERLAY RINGAN (VISUALIZER + TEKS DI ATAS VIDEO GPU) ---
   let tick = 0;
 
   function renderFrame() {
@@ -218,9 +279,9 @@
     const W = canvas.width;  // 960
     const H = canvas.height; // 540
 
-    // 1. Gambar Background
-    if (bgVideo && bgVideo.readyState >= 2 && bgVideo.videoWidth) {
-      drawCover(bgVideo, bgVideo.videoWidth, bgVideo.videoHeight);
+    // 1. Bersihkan canvas (transparan jika video GPU aktif, gambar/gradasi jika tidak)
+    if (isVideoActive) {
+      ctx.clearRect(0, 0, W, H);
     } else if (bgImg && bgImg.naturalWidth) {
       drawCover(bgImg, bgImg.naturalWidth, bgImg.naturalHeight);
     } else {
@@ -233,7 +294,7 @@
 
     // 2. Gambar Visualizer (Real-time saat Play, simulasi halus saat Pause)
     if (s.visStyle !== 'off') {
-      const visW = 700; // 1400px di 1080p
+      const visW = 700;
       const visH = Math.max(20, s.visHeight * 0.5);
       const visX = (W - visW) / 2;
       const visTop = (s.visY / 100) * (H - visH);
@@ -315,13 +376,13 @@
       ctx.fillText(label, x, y);
     }
 
-    // Catatan status loading background di pojok kiri atas preview
+    // Status loading di pojok kiri atas
     if (bgStatusNote) {
       ctx.font = '13px Segoe UI';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(10, 10, 420, 26);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(10, 10, 320, 26);
       ctx.fillStyle = '#ffd166';
       ctx.fillText(bgStatusNote, 18, 16);
     }
