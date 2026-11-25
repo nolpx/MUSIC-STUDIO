@@ -1,30 +1,37 @@
-import os, subprocess, argparse
+import os
+import sys
+import subprocess
+import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--efek", default="hujan")
+parser.add_argument("--efek", default="tanpa_efek")
 parser.add_argument("--vis_style", default="bar")
 parser.add_argument("--vis_color", default="#00ffcc")
 parser.add_argument("--judul_teks", default="")
 args = parser.parse_args()
 
-# Deteksi otomatis apakah background gambar atau video
-mime = subprocess.check_output(["file", "--mime-type", "-b", "bg_input"]).decode().strip()
+# Cek apakah file background valid (bukan halaman error HTML)
+mime_bg = subprocess.check_output(["file", "--mime-type", "-b", "bg_input"]).decode().strip()
+mime_audio = subprocess.check_output(["file", "--mime-type", "-b", "audio.mp3"]).decode().strip()
+print(f"Tipe Background: {mime_bg} | Tipe Audio: {mime_audio}")
+
+if "html" in mime_bg or "html" in mime_audio:
+    sys.exit("ERROR: Link background atau audio bukan Direct Link (terdeteksi halaman HTML)!")
+
 cmd = ["ffmpeg", "-y"]
 
-if mime.startswith("image/"):
+if mime_bg.startswith("image/"):
     cmd += ["-loop", "1", "-i", "bg_input"]
 else:
     cmd += ["-stream_loop", "-1", "-i", "bg_input"]
 
 cmd += ["-i", "audio.mp3"]
 
-# Cek apakah file overlay hujan/salju tersedia di folder assets/
 overlay_file = f"assets/{args.efek}.mp4"
 has_overlay = args.efek != "tanpa_efek" and os.path.exists(overlay_file)
 if has_overlay:
     cmd += ["-stream_loop", "-1", "-i", overlay_file]
 
-# Rangkai layer FFmpeg (seperti track di CapCut)
 filters = [
     "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=24,setsar=1,format=rgb24[v0]"
 ]
