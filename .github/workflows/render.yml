@@ -1,0 +1,53 @@
+name: Render Studio Musik
+
+on:
+  workflow_dispatch:
+    inputs:
+      bg_url:
+        description: 'Link Background'
+        required: true
+      audio_url:
+        description: 'Link Audio MP3'
+        required: true
+      judul_teks:
+        description: 'Teks di layar'
+        default: ''
+      efek:
+        description: 'hujan / salju / tanpa_efek'
+        default: 'hujan'
+      vis_style:
+        description: 'bar / wave / off'
+        default: 'bar'
+      vis_color:
+        description: 'Warna Hex Visualizer'
+        default: '#00ffcc'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg & Font
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu file
+
+      - name: Download Bahan dari Link
+        run: |
+          curl -L "${{ github.event.inputs.bg_url }}" -o bg_input
+          curl -L "${{ github.event.inputs.audio_url }}" -o audio.mp3
+
+      - name: Render Video
+        run: |
+          python3 scripts/render.py \
+            --efek "${{ github.event.inputs.efek }}" \
+            --vis_style "${{ github.event.inputs.vis_style }}" \
+            --vis_color "${{ github.event.inputs.vis_color }}" \
+            --judul_teks "${{ github.event.inputs.judul_teks }}"
+
+      # Untuk tes video pendek (<500MB), bisa langsung didownload di sini.
+      # Nanti untuk video 1 jam (>1GB), langkah ini kita ganti dengan Auto-Upload ke YouTube!
+      - name: Simpan Hasil Render (Tahap Uji Coba)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hasil-video-musik
+          path: output.mp4
