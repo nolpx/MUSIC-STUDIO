@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       bg_url:
-        description: 'Link Background'
+        description: 'File atau Link Background'
         required: true
       audio_url:
-        description: 'Link Audio MP3'
+        description: 'File atau Link Audio'
         required: true
       judul_teks:
         description: 'Teks di layar'
@@ -26,16 +26,28 @@ jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode Repositori
+      - name: Ambil Kode & File Upload
         uses: actions/checkout@v4
 
       - name: Install FFmpeg & Font
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu file
 
-      - name: Download Bahan dari Link
+      - name: Siapkan Bahan (File Upload atau Link URL)
         run: |
-          curl -fL "${{ github.event.inputs.bg_url }}" -o bg_input
-          curl -fL "${{ github.event.inputs.audio_url }}" -o audio.mp3
+          BG="${{ github.event.inputs.bg_url }}"
+          AUDIO="${{ github.event.inputs.audio_url }}"
+
+          if [[ "$BG" == http* ]]; then
+            curl -fL "$BG" -o bg_input
+          else
+            cp "$BG" bg_input
+          fi
+
+          if [[ "$AUDIO" == http* ]]; then
+            curl -fL "$AUDIO" -o audio.mp3
+          else
+            cp "$AUDIO" audio.mp3
+          fi
 
       - name: Render Video
         run: |
