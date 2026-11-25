@@ -1,0 +1,68 @@
+import os, subprocess, argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--efek", default="hujan")
+parser.add_argument("--vis_style", default="bar")
+parser.add_argument("--vis_color", default="#00ffcc")
+parser.add_argument("--judul_teks", default="")
+args = parser.parse_args()
+
+# Deteksi otomatis apakah background gambar atau video
+mime = subprocess.check_output(["file", "--mime-type", "-b", "bg_input"]).decode().strip()
+cmd = ["ffmpeg", "-y"]
+
+if mime.startswith("image/"):
+    cmd += ["-loop", "1", "-i", "bg_input"]
+else:
+    cmd += ["-stream_loop", "-1", "-i", "bg_input"]
+
+cmd += ["-i", "audio.mp3"]
+
+# Cek apakah file overlay hujan/salju tersedia di folder assets/
+overlay_file = f"assets/{args.efek}.mp4"
+has_overlay = args.efek != "tanpa_efek" and os.path.exists(overlay_file)
+if has_overlay:
+    cmd += ["-stream_loop", "-1", "-i", overlay_file]
+
+# Rangkai layer FFmpeg (seperti track di CapCut)
+filters = [
+    "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=24,setsar=1,format=rgb24[v0]"
+]
+cur = "v0"
+
+if has_overlay:
+    filters.append("[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=24,setsar=1,format=rgb24[ov]")
+    filters.append(f"[{cur}][ov]blend=all_mode=screen[v1]")
+    cur = "v1"
+
+if args.vis_style == "bar":
+    filters.append(f"[1:a]showfreqs=s=1400x160:mode=bar:ascale=sqrt:fscale=log:colors={args.vis_color},fps=24,colorkey=0x000000:0.1:0.1[vis]")
+    filters.append(f"[{cur}][vis]overlay=(W-w)/2:H-h-80:shortest=1[v2]")
+    cur = "v2"
+elif args.vis_style == "wave":
+    filters.append(f"[1:a]showwaves=s=1400x160:mode=cline:rate=24:colors={args.vis_color},colorkey=0x000000:0.1:0.1[vis]")
+    filters.append(f"[{cur}][vis]overlay=(W-w)/2:H-h-80:shortest=1[v2]")
+    cur = "v2"
+
+if args.judul_teks:
+    with open("title.txt", "w", encoding="utf-8") as f:
+        f.write(args.judul_teks)
+    filters.append(
+        f"[{cur}]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        "textfile=title.txt:fontcolor=white:fontsize=52:x=(w-text_w)/2:y=100:"
+        "shadowcolor=black@0.7:shadowx=3:shadowy=3[v3]"
+    )
+    cur = "v3"
+
+filters.append(f"[{cur}]format=yuv420p[vout]")
+
+cmd += [
+    "-filter_complex", ";".join(filters),
+    "-map", "[vout]", "-map", "1:a",
+    "-c:v", "libx264", "-preset", "superfast", "-crf", "20",
+    "-c:a", "aac", "-b:a", "192k",
+    "-shortest", "output.mp4"
+]
+
+print("Menjalankan FFmpeg:", " ".join(cmd))
+subprocess.run(cmd, check=True)
